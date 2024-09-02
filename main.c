@@ -321,8 +321,12 @@ DQT decode_dqt(Bytes_View bytes) {
     return dqt;
 }
 
-int main(void) {
-    const char *filepath = "./empty.jpg";
+int main(int argc, const char **argv) {
+    if (argc < 2) {
+        fprintf(stderr, "Error: expected input filepath\n");
+        exit(1);
+    }
+    const char *filepath = argv[1];
 
     Bytes image_bytes = read_file(filepath);
     Bytes_View bytes_view = {
@@ -361,11 +365,11 @@ int main(void) {
             printf("    y density: %d\n", app0.y_density);
             printf("    thubmanil width: %d\n", app0.thumbnail_width);
             printf("    thubmanil height: %d\n", app0.thumbnail_height);
-            printf("    thubmanil size in bytes: %d\n", app0.thumbnail_bytes.count);
+            printf("    thubmanil size in bytes: %zu\n", app0.thumbnail_bytes.count);
         } else if (header_type == TYPE_DQT) {
             DQT dqt = decode_dqt(segment_bytes);
             printf("    id: %d\n", dqt.id);
-            printf("    table size in bytes: %d\n", dqt.qt_bytes.count);
+            printf("    table size in bytes: %zu\n", dqt.qt_bytes.count);
         }
 
         if (header_type == TYPE_SOS) {
