@@ -180,7 +180,7 @@ Bytes read_file(const char *filepath) {
 
 Bytes_View read_bytes(Bytes_View *bytes, size_t count) {
     if (bytes->count < count) {
-        fprintf(stderr, "Error: could not read %zu bytes\n", count);
+        fprintf(stderr, "Error: could not read %zu byte(s)\n", count);
         exit(1);
     }
 
@@ -220,13 +220,25 @@ typedef enum {
     PIXEL_ASPECT_RATIO = 0,
     PIXELS_PER_INCH = 1,
     PIXELS_PER_CM = 2,
-} APP0_Unit;
+} APP0_Unit_Type;
+
+const char *density_unit_type_to_cstr(APP0_Unit_Type type) {
+    switch (type) {
+    case PIXEL_ASPECT_RATIO: return "PIXEL_ASPECT_RATIO";
+    case PIXELS_PER_INCH: return "PIXELS_PER_INCH";
+    case PIXELS_PER_CM: return "PIXELS_PER_CM";
+    default: {
+        fprintf(stderr, "Error: invalid density unit type: %d\n", type);
+        exit(1);
+    }
+    }
+}
 
 typedef struct {
     byte major_version_number;
     byte minor_version_number;
 
-    APP0_Unit density_unit;
+    APP0_Unit_Type density_unit_type;
     u16 x_density;
     u16 y_density;
 
@@ -236,7 +248,23 @@ typedef struct {
 } APP0;
 
 typedef struct {
+    byte id;
+    Bytes_View qt_bytes;
 } DQT;
+
+typedef struct {
+    u16 image_width;
+    u16 image_height;
+    // TODO(nic): Add other stuff
+} SOF0;
+
+u16 zigzag(Bytes_View bytes) {
+    assert(bytes.count == 2);
+    byte temp[2];
+    temp[1] = read_byte(&bytes);
+    temp[0] = read_byte(&bytes);
+    return *(u16*)temp;
+}
 
 APP0 decode_app0(Bytes_View bytes) {
     APP0 app0 = {0};
@@ -254,17 +282,17 @@ APP0 decode_app0(Bytes_View bytes) {
 
     byte density_unit_byte = read_byte(&bytes);
     switch (density_unit_byte) {
-    case 0: app0.density_unit = PIXEL_ASPECT_RATIO; break;
-    case 1: app0.density_unit = PIXELS_PER_INCH; break;
-    case 2: app0.density_unit = PIXELS_PER_CM; break;
+    case 0: app0.density_unit_type = PIXEL_ASPECT_RATIO; break;
+    case 1: app0.density_unit_type = PIXELS_PER_INCH; break;
+    case 2: app0.density_unit_type = PIXELS_PER_CM; break;
     default: {
         fprintf(stderr, "Error: invalid JFIF APP0 marker segment: incorrect density unit value: %d\n", density_unit_byte);
         exit(1);
     }
     }
 
-    app0.x_density = *(u16*)(read_bytes(&bytes, 2).data);
-    app0.y_density = *(u16*)(read_bytes(&bytes, 2).data);
+    app0.x_density = zigzag(read_bytes(&bytes, 2));
+    app0.y_density = zigzag(read_bytes(&bytes, 2));
 
     if (app0.x_density == 0 || app0.y_density == 0) {
         fprintf(stderr, "Error: invalid JFIF APP0 marker segment: x density and y density cannot be zero\n");
@@ -275,13 +303,26 @@ APP0 decode_app0(Bytes_View bytes) {
     app0.thumbnail_height = read_byte(&bytes);
 
     size_t thumbnail_size = app0.thumbnail_width * app0.thumbnail_height * 3;
-    app0.thumbnail_bytes = (Bytes_View) { .data = bytes.data, .count = thumbnail_size };
+    app0.thumbnail_bytes = read_bytes(&bytes, thumbnail_size);
 
     return app0;
 }
 
+DQT decode_dqt(Bytes_View bytes) {
+    DQT dqt = {0};
+
+    byte info = read_byte(&bytes);
+    byte id = info & 0x0F;
+    // NOTE(nic): maybe we should allow only 1 and 0 as valid
+    byte precision = ((info & 0xF0) == 0) ? 0 : 1;
+
+    dqt.id = id;
+    dqt.qt_bytes = read_bytes(&bytes, 64 * (1 + precision));
+    return dqt;
+}
+
 int main(void) {
-    const char *filepath = "./joshkkk.jpg";
+    const char *filepath = "./empty.jpg";
 
     Bytes image_bytes = read_file(filepath);
     Bytes_View bytes_view = {
@@ -308,16 +349,23 @@ int main(void) {
             break;
         }
 
-        byte segment_size_bytes[2];
-        segment_size_bytes[1] = read_byte(&bytes_view);
-        segment_size_bytes[0] = read_byte(&bytes_view);
-        u16 segment_size = *(u16*)segment_size_bytes - 2;
-
+        u16 segment_size = zigzag(read_bytes(&bytes_view, 2)) - 2;
         Bytes_View segment_bytes = read_bytes(&bytes_view, segment_size);
         printf("%s (0x%02X): %d\n", header_type_to_cstr(header_type), segment_byte, segment_size);
 
         if (header_type == TYPE_APP0) {
             APP0 app0 = decode_app0(segment_bytes);
+            printf("    version: %d.%02d\n", app0.major_version_number, app0.minor_version_number);
+            printf("    density unit type: %s\n", density_unit_type_to_cstr(app0.density_unit_type));
+            printf("    x density: %d\n", app0.x_density);
+            printf("    y density: %d\n", app0.y_density);
+            printf("    thubmanil width: %d\n", app0.thumbnail_width);
+            printf("    thubmanil height: %d\n", app0.thumbnail_height);
+            printf("    thubmanil size in bytes: %d\n", app0.thumbnail_bytes.count);
+        } else if (header_type == TYPE_DQT) {
+            DQT dqt = decode_dqt(segment_bytes);
+            printf("    id: %d\n", dqt.id);
+            printf("    table size in bytes: %d\n", dqt.qt_bytes.count);
         }
 
         if (header_type == TYPE_SOS) {
@@ -330,6 +378,7 @@ int main(void) {
                 count += 1;
             }
             Bytes_View compressed_data_bytes = read_bytes(&bytes_view, count);
+            printf("image data size in bytes: %zu\n", compressed_data_bytes.count);
         }
     }
 
