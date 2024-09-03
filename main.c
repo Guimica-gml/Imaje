@@ -157,12 +157,12 @@ Header_Type header_type_from_byte(byte byte) {
 Bytes read_file(const char *filepath) {
     FILE *file = fopen(filepath, "rb");
     if (file == NULL) {
-        fprintf(stderr, "Error: could not read '%s': %s", filepath, strerror(errno));
+        fprintf(stderr, "Error: could not read '%s': %s\n", filepath, strerror(errno));
         exit(1);
     }
 
     if (fseek(file, 0, SEEK_END) != 0) {
-        fprintf(stderr, "Error: could not read '%s': %s", filepath, strerror(errno));
+        fprintf(stderr, "Error: could not read '%s': %s\n", filepath, strerror(errno));
         exit(1);
     }
 
