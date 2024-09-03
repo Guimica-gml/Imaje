@@ -252,10 +252,42 @@ typedef struct {
     Bytes_View qt_bytes;
 } DQT;
 
+typedef enum {
+    COMP_Y = 1,
+    COMP_CB = 2,
+    COMP_CR = 3,
+    COMP_I = 4,
+    COMP_Q = 5,
+} SOF0_Component_Id;
+
+const char *component_id_to_cstr(SOF0_Component_Id id) {
+    switch (id) {
+    case COMP_Y: return "COMP_Y";
+    case COMP_CB: return "COMP_CB";
+    case COMP_CR: return "COMP_CR";
+    case COMP_I: return "COMP_I";
+    case COMP_Q: return "COMP_Q";
+    default: {
+        fprintf(stderr, "Error: invalid SOF0 component id: %d\n", id);
+        exit(1);
+    }
+    }
+}
+
 typedef struct {
+    SOF0_Component_Id id;
+    byte vertical_sampling_factor;
+    byte horizontal_sampling_factor;
+    byte qt_number;
+} SOF0_Component;
+
+#define SOF0_COMPONENTS_CAP 5
+typedef struct {
+    byte data_precision; // In bits
     u16 image_width;
     u16 image_height;
-    // TODO(nic): Add other stuff
+    SOF0_Component components[SOF0_COMPONENTS_CAP];
+    byte components_count;
 } SOF0;
 
 u16 zigzag(Bytes_View bytes) {
@@ -321,6 +353,28 @@ DQT decode_dqt(Bytes_View bytes) {
     return dqt;
 }
 
+SOF0 decode_sof0(Bytes_View bytes) {
+    SOF0 sof0 = {0};
+    sof0.data_precision = read_byte(&bytes);
+    sof0.image_width = zigzag(read_bytes(&bytes, 2));
+    sof0.image_height = zigzag(read_bytes(&bytes, 2));
+    sof0.components_count = read_byte(&bytes);
+
+    for (size_t i = 0; i < sof0.components_count; ++i) {
+        Bytes_View comp_info = read_bytes(&bytes, 3);
+
+        byte id = read_byte(&comp_info);
+        byte sampling_factors = read_byte(&comp_info);
+        byte qt_number = read_byte(&comp_info);
+
+        sof0.components[i].id = id;
+        sof0.components[i].vertical_sampling_factor = (sampling_factors & 0x0F);
+        sof0.components[i].horizontal_sampling_factor = (sampling_factors & 0xF0);
+        sof0.components[i].qt_number = qt_number;
+    }
+    return sof0;
+}
+
 int main(int argc, const char **argv) {
     if (argc < 2) {
         fprintf(stderr, "Error: expected input filepath\n");
@@ -370,6 +424,18 @@ int main(int argc, const char **argv) {
             DQT dqt = decode_dqt(segment_bytes);
             printf("    id: %d\n", dqt.id);
             printf("    table size in bytes: %zu\n", dqt.qt_bytes.count);
+        } else if (header_type == TYPE_SOF0) {
+            SOF0 sof0 = decode_sof0(segment_bytes);
+            printf("    data precision (in bits): %d\n", sof0.data_precision);
+            printf("    image width: %d\n", sof0.image_width);
+            printf("    image height: %d\n", sof0.image_height);
+            printf("    components count: %d\n", sof0.components_count);
+            for (size_t i = 0; i < sof0.components_count; ++i) {
+                printf("    component %s:\n", component_id_to_cstr(sof0.components[i].id));
+                printf("        horizontal sampling factor: %d\n", sof0.components[i].horizontal_sampling_factor);
+                printf("        vertical sampling factor: %d\n", sof0.components[i].vertical_sampling_factor);
+                printf("        quantization table number: %d\n", sof0.components[i].qt_number);
+            }
         }
 
         if (header_type == TYPE_SOS) {
