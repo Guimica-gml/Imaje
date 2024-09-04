@@ -415,7 +415,7 @@ DHT decode_dht(Bytes_View bytes) {
     byte info = read_byte(&bytes);
 
     byte id = (info & 0x07);
-    HT_Type type = (info & 0x08) ? HT_DC: HT_AC;
+    HT_Type type = ((info & 0x08) == 0) ? HT_DC: HT_AC;
 
     Bytes_View number_of_symbols = read_bytes(&bytes, 16);
 
@@ -426,6 +426,7 @@ DHT decode_dht(Bytes_View bytes) {
     Bytes_View symbols = read_bytes(&bytes, symbols_buffer_size);
 
     dht.id = id;
+    dht.type = type;
     dht.symbols = symbols;
     return dht;
 }
