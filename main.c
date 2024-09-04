@@ -258,9 +258,9 @@ typedef enum {
     COMP_CR = 3,
     COMP_I = 4,
     COMP_Q = 5,
-} SOF0_Component_Id;
+} Component_Id;
 
-const char *component_id_to_cstr(SOF0_Component_Id id) {
+const char *component_id_to_cstr(Component_Id id) {
     switch (id) {
     case COMP_Y: return "COMP_Y";
     case COMP_CB: return "COMP_CB";
@@ -275,20 +275,54 @@ const char *component_id_to_cstr(SOF0_Component_Id id) {
 }
 
 typedef struct {
-    SOF0_Component_Id id;
+    Component_Id id;
     byte vertical_sampling_factor;
     byte horizontal_sampling_factor;
     byte qt_number;
 } SOF0_Component;
 
-#define SOF0_COMPONENTS_CAP 5
+#define COMPONENTS_CAP 5
+
 typedef struct {
     byte data_precision; // In bits
     u16 image_width;
     u16 image_height;
-    SOF0_Component components[SOF0_COMPONENTS_CAP];
+    SOF0_Component components[COMPONENTS_CAP];
     byte components_count;
 } SOF0;
+
+typedef enum {
+    HT_DC,
+    HT_AC,
+} HT_Type;
+
+const char *ht_type_to_cstr(HT_Type type) {
+    switch (type) {
+    case HT_DC: return "HT_DC";
+    case HT_AC: return "HT_AC";
+    default: {
+        fprintf(stderr, "Error: invalid DHT type: %d\n", type);
+        exit(1);
+    }
+    }
+}
+
+typedef struct {
+    byte id;
+    HT_Type type;
+    Bytes_View symbols;
+} DHT;
+
+typedef struct {
+    Component_Id id;
+    byte dc_ht_id;
+    byte ac_ht_id;
+} SOS_Component;
+
+typedef struct {
+    SOS_Component components[COMPONENTS_CAP];
+    byte components_count;
+} SOS;
 
 u16 zigzag(Bytes_View bytes) {
     assert(bytes.count == 2);
@@ -375,6 +409,40 @@ SOF0 decode_sof0(Bytes_View bytes) {
     return sof0;
 }
 
+DHT decode_dht(Bytes_View bytes) {
+    DHT dht = {0};
+
+    byte info = read_byte(&bytes);
+
+    byte id = (info & 0x07);
+    HT_Type type = (info & 0x08) ? HT_DC: HT_AC;
+
+    Bytes_View number_of_symbols = read_bytes(&bytes, 16);
+
+    byte symbols_buffer_size = 0;
+    for (size_t i = 0; i < number_of_symbols.count; ++i) {
+        symbols_buffer_size += number_of_symbols.data[i];
+    }
+    Bytes_View symbols = read_bytes(&bytes, symbols_buffer_size);
+
+    dht.id = id;
+    dht.symbols = symbols;
+    return dht;
+}
+
+SOS decode_sos(Bytes_View bytes) {
+    SOS sos = {0};
+    sos.components_count = read_byte(&bytes);
+    for (size_t i = 0; i < sos.components_count; ++i) {
+        Component_Id id = read_byte(&bytes);
+        byte ht_ids = read_byte(&bytes);
+        sos.components[i].id = id;
+        sos.components[i].ac_ht_id = (ht_ids & 0x0F);
+        sos.components[i].dc_ht_id = (ht_ids & 0xF0);
+    }
+    return sos;
+}
+
 int main(int argc, const char **argv) {
     if (argc < 2) {
         fprintf(stderr, "Error: expected input filepath\n");
@@ -436,9 +504,20 @@ int main(int argc, const char **argv) {
                 printf("        vertical sampling factor: %d\n", sof0.components[i].vertical_sampling_factor);
                 printf("        quantization table number: %d\n", sof0.components[i].qt_number);
             }
-        }
+        } else if (header_type == TYPE_DHT) {
+            DHT dht = decode_dht(segment_bytes);
+            printf("    id: %d\n", dht.id);
+            printf("    ht type: %s\n", ht_type_to_cstr(dht.type));
+            printf("    symbols size in bytes: %zu\n", dht.symbols.count);
+        } else if (header_type == TYPE_SOS) {
+            SOS sos = decode_sos(segment_bytes);
+            printf("    components count: %d\n", sos.components_count);
+            for (size_t i = 0; i < sos.components_count; ++i) {
+                printf("    component %s:\n", component_id_to_cstr(sos.components[i].id));
+                printf("        ac ht id: %d\n", sos.components[i].ac_ht_id);
+                printf("        dc ht id: %d\n", sos.components[i].dc_ht_id);
+            }
 
-        if (header_type == TYPE_SOS) {
             size_t count = 0;
             while (count < bytes_view.count) {
                 // TODO(nic): technically unsafe, do proper check later
