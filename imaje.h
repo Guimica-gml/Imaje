@@ -160,6 +160,7 @@ Imj_Header_Type imj_header_type_from_byte(byte byte);
 Imj_Bytes imj_read_file(const char *filepath);
 Imj_Bytes_View imj_read_bytes(Imj_Bytes_View *bytes, size_t count);
 byte imj_read_byte(Imj_Bytes_View *bytes);
+u16 imj_read_be_u16(Imj_Bytes_View *bytes);
 
 Imj_APP0 imj_parse_app0(Imj_Bytes_View bytes);
 Imj_DQT imj_parse_dqt(Imj_Bytes_View bytes);
@@ -171,14 +172,6 @@ Imj_SOS imj_parse_sos(Imj_Bytes_View bytes);
 
 #ifdef IMAJE_IMPLEMTATION
 #undef IMAJE_IMPLEMTATION
-
-u16 zigzag(Imj_Bytes_View bytes) {
-    assert(bytes.count == 2);
-    byte temp[2];
-    temp[1] = imj_read_byte(&bytes);
-    temp[0] = imj_read_byte(&bytes);
-    return *(u16*)temp;
-}
 
 const char *imj_header_type_to_cstr(Imj_Header_Type type) {
     switch (type) {
@@ -357,6 +350,18 @@ byte imj_read_byte(Imj_Bytes_View *bytes) {
     return byte;
 }
 
+u16 imj_read_be_u16(Imj_Bytes_View *bytes) {
+    if (bytes->count < 2) {
+        fprintf(stderr, "Error: could not read 2 byte(s)\n");
+        exit(1);
+    }
+
+    byte temp[2];
+    temp[1] = imj_read_byte(bytes);
+    temp[0] = imj_read_byte(bytes);
+    return *(u16*)temp;
+}
+
 Imj_APP0 imj_parse_app0(Imj_Bytes_View bytes) {
     Imj_APP0 app0 = {0};
 
@@ -371,19 +376,15 @@ Imj_APP0 imj_parse_app0(Imj_Bytes_View bytes) {
     app0.major_version_number = imj_read_byte(&bytes);
     app0.minor_version_number = imj_read_byte(&bytes);
 
-    byte density_unit_byte = imj_read_byte(&bytes);
-    switch (density_unit_byte) {
-    case 0: app0.density_unit_type = PIXEL_ASPECT_RATIO; break;
-    case 1: app0.density_unit_type = PIXELS_PER_INCH; break;
-    case 2: app0.density_unit_type = PIXELS_PER_CM; break;
-    default: {
-        fprintf(stderr, "Error: invalid APP0 marker segment: incorrect density unit value: %d\n", density_unit_byte);
+    byte density_unit_type = imj_read_byte(&bytes);
+    if (density_unit_type > 2) {
+        fprintf(stderr, "Error: invalid APP0 marker segment: incorrect density unit value: %d\n", density_unit_type);
         exit(1);
     }
-    }
+    app0.density_unit_type = density_unit_type;
 
-    app0.x_density = zigzag(imj_read_bytes(&bytes, 2));
-    app0.y_density = zigzag(imj_read_bytes(&bytes, 2));
+    app0.x_density = imj_read_be_u16(&bytes);
+    app0.y_density = imj_read_be_u16(&bytes);
 
     if (app0.x_density == 0 || app0.y_density == 0) {
         fprintf(stderr, "Error: invalid APP0 marker segment: x density and y density cannot be zero\n");
@@ -415,8 +416,8 @@ Imj_DQT imj_parse_dqt(Imj_Bytes_View bytes) {
 Imj_SOF0 imj_parse_sof0(Imj_Bytes_View bytes) {
     Imj_SOF0 sof0 = {0};
     sof0.data_precision = imj_read_byte(&bytes);
-    sof0.image_width = zigzag(imj_read_bytes(&bytes, 2));
-    sof0.image_height = zigzag(imj_read_bytes(&bytes, 2));
+    sof0.image_width = imj_read_be_u16(&bytes);
+    sof0.image_height = imj_read_be_u16(&bytes);
     sof0.components_count = imj_read_byte(&bytes);
 
     for (size_t i = 0; i < sof0.components_count; ++i) {

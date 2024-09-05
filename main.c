@@ -33,7 +33,7 @@ int main(int argc, const char **argv) {
             break;
         }
 
-        u16 segment_size = zigzag(imj_read_bytes(&bytes_view, 2)) - 2;
+        u16 segment_size = imj_read_be_u16(&bytes_view) - 2;
         Imj_Bytes_View segment_bytes = imj_read_bytes(&bytes_view, segment_size);
         printf("%s (0x%02X): %d\n", imj_header_type_to_cstr(header_type), segment_byte, segment_size);
 
