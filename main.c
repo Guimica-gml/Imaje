@@ -380,7 +380,7 @@ DQT decode_dqt(Bytes_View bytes) {
     byte info = read_byte(&bytes);
     byte id = info & 0x0F;
     // NOTE(nic): maybe we should allow only 1 and 0 as valid
-    byte precision = ((info & 0xF0) == 0) ? 0 : 1;
+    byte precision = (((info & 0xF0) >> 4) == 0) ? 0 : 1;
 
     dqt.id = id;
     dqt.qt_bytes = read_bytes(&bytes, 64 * (1 + precision));
@@ -403,7 +403,7 @@ SOF0 decode_sof0(Bytes_View bytes) {
 
         sof0.components[i].id = id;
         sof0.components[i].vertical_sampling_factor = (sampling_factors & 0x0F);
-        sof0.components[i].horizontal_sampling_factor = (sampling_factors & 0xF0);
+        sof0.components[i].horizontal_sampling_factor = ((sampling_factors & 0xF0) >> 4);
         sof0.components[i].qt_number = qt_number;
     }
     return sof0;
@@ -439,7 +439,7 @@ SOS decode_sos(Bytes_View bytes) {
         byte ht_ids = read_byte(&bytes);
         sos.components[i].id = id;
         sos.components[i].ac_ht_id = (ht_ids & 0x0F);
-        sos.components[i].dc_ht_id = (ht_ids & 0xF0);
+        sos.components[i].dc_ht_id = ((ht_ids & 0xF0) >> 4);
     }
     return sos;
 }
