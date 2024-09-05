@@ -102,13 +102,13 @@ typedef struct {
     byte vertical_sampling_factor;
     byte horizontal_sampling_factor;
     byte qt_number;
-} IMj_SOF0_Comp;
+} Imj_SOF0_Comp;
 
 typedef struct {
     byte data_precision; // In bits
     u16 image_width;
     u16 image_height;
-    IMj_SOF0_Comp components[IMJ_COMP_COUNT];
+    Imj_SOF0_Comp components[IMJ_COMP_COUNT];
     byte components_count;
 } Imj_SOF0;
 
