@@ -344,6 +344,11 @@ Imj_Bytes_View imj_read_bytes(Imj_Bytes_View *bytes, size_t count) {
 }
 
 byte imj_read_byte(Imj_Bytes_View *bytes) {
+    if (bytes->count < 1) {
+        fprintf(stderr, "Error: could not read 1 byte(s)\n");
+        exit(1);
+    }
+
     byte byte = bytes->data[0];
     bytes->data += 1;
     bytes->count -= 1;
