@@ -136,12 +136,17 @@ typedef struct {
 } Imj_SOS;
 
 #define DQTS_CAP 4
-#define DHTS_CAP 4
+#define DHTS_CAP 8 // We can have 4 of each type (HT_AC and HT_DC)
 
 typedef struct {
     Imj_APP0 app0;
+    bool contains_app0;
+
     Imj_SOF0 sof0;
+    bool contains_sof0;
+
     Imj_SOS sos;
+    bool contains_sos;
 
     Imj_DQT dqts[DQTS_CAP];
     size_t dqts_count;
